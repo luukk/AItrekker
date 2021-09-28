@@ -1,5 +1,4 @@
 /outputs/*
-/model_data/
 /checkpoints/
 /data/yolov4.weights
 /data/video
