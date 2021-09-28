@@ -1,5 +1,9 @@
 /outputs/*
 /checkpoints/
 /data/yolov4.weights
+/data/yolov4-tiny.weights
 /data/video
 *.jpg
+/Lib
+/Scripts
+pyvenv.cfg
