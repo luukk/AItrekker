@@ -1,9 +1,13 @@
 /outputs/*
 /checkpoints/
 /data/yolov4.weights
+/data/yolov4-tiny.weights
 /data/video
 *.jpg
 trackNet/model.1
 WeightsTracknet/model.1
 *.csv
 output.avi
+/Lib
+/Scripts
+pyvenv.cfg
