@@ -3,6 +3,7 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import time
 import queue
+import re
 import pandas as pd
 import tensorflow as tf
 physical_devices = tf.config.experimental.list_physical_devices('GPU')
@@ -152,7 +153,7 @@ def main(_argv):
         length = int(vid.get(cv2.CAP_PROP_FRAME_COUNT))
     frame_num = 0
     # while video is running
-    while frame_num < 250:
+    while True:
         return_value, frame = vid.read()
 
         if return_value:
@@ -294,7 +295,7 @@ def main(_argv):
         # find the circle in image with 2<=radius<=7
         circles = cv2.HoughCircles(heatmap, cv2.HOUGH_GRADIENT, dp=1, minDist=1, param1=50, param2=2, minRadius=2,
                                maxRadius=7)
-        print("circles: ", circles)
+        # print("circles: ", circles)
 
           # check if there have any tennis be detected
         if circles is not None:
@@ -309,7 +310,7 @@ def main(_argv):
                 # pop x,y from queue
                 q.pop()
 
-                data.append([frame_num, 'ball', '-', '-', x, y])      
+                data.append([frame_num, 'ball', '-', x, y])      
 
             else:
                 # push None to queue
@@ -411,10 +412,10 @@ def main(_argv):
 
                 if mean[1] > 100:
                     team = " a"
-                    print("team a")
+                    # print("team a")
                 else:
                     team = " b"
-                    print("team b")
+                    # print("team b")
             
         # draw bbox on screen
             color = colors[int(track.track_id) % len(colors)]
@@ -425,8 +426,8 @@ def main(_argv):
 
             """ Store player position in dataframe format """
             if track.track_id == 1 or track.track_id == 2:
-                data.append([frame_num, class_name, team, track.track_id, (bbox[0] + bbox[2])/2, bbox[3]])      
-                print(data)
+                data.append([frame_num, class_name, track.track_id, (bbox[0] + bbox[2])/2, bbox[3]])      
+                # print(data)
        
 
         # if enable info flag then print details about each track
@@ -445,8 +446,9 @@ def main(_argv):
         # if output flag is set, save video file
         if FLAGS.output:
             out.write(result)
-            df_players_positions = pd.DataFrame(data, columns=["id", "class_name", "team", "x", "y"])
-            df_players_positions.to_csv("tracking_players.csv")
+            df_players_positions = pd.DataFrame(data, columns=["frame", "class_name", "id", "x", "y"])
+            file_name = re.findall(r'[^\/]+(?=\.)', FLAGS.video)[0]
+            df_players_positions.to_csv(f"./output/data/{file_name}.csv")
 
         if cv2.waitKey(1) & 0xFF == ord('q'): break
     cv2.destroyAllWindows()
