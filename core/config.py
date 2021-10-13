@@ -44,7 +44,7 @@ __C.TEST                      = edict()
 
 __C.TEST.ANNOT_PATH           = "./data/dataset/val2017.txt"
 __C.TEST.BATCH_SIZE           = 2
-__C.TEST.INPUT_SIZE           = 416
+__C.TEST.INPUT_SIZE           = 832
 __C.TEST.DATA_AUG             = False
 __C.TEST.DECTECTED_IMAGE_PATH = "./data/detection/"
 __C.TEST.SCORE_THRESHOLD      = 0.25

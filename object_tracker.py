@@ -2,6 +2,8 @@ import os
 # comment out below line to enable tensorflow logging outputs
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import time
+import queue
+import pandas as pd
 import tensorflow as tf
 physical_devices = tf.config.experimental.list_physical_devices('GPU')
 if len(physical_devices) > 0:
@@ -23,6 +25,9 @@ from deep_sort import preprocessing, nn_matching
 from deep_sort.detection import Detection
 from deep_sort.tracker import Tracker
 from tools import generate_detections as gdet
+from trackNet.tracknet import trackNet
+print(trackNet)
+
 flags.DEFINE_string('framework', 'tf', '(tf, tflite, trt')
 flags.DEFINE_string('weights', './checkpoints/yolov4-416',
                     'path to weights file')
@@ -37,6 +42,11 @@ flags.DEFINE_float('score', 0.50, 'score threshold')
 flags.DEFINE_boolean('dont_show', False, 'dont show video output')
 flags.DEFINE_boolean('info', False, 'show detailed info of tracked objects')
 flags.DEFINE_boolean('count', False, 'count objects being tracked on screen')
+
+n_classes = 256
+save_weights_path = "./WeightsTracknet/model.1"
+
+data = []
 
 # function filters contours and removes small and big ones and returns those which represent player
 def filtercontours(contours):
@@ -75,7 +85,24 @@ def main(_argv):
     # Definition of the parameters
     max_cosine_distance = 0.4
     nn_budget = None
+    # print(FLAGS.framework)
+
     nms_max_overlap = 1.0
+
+    # # width and height in TrackNet
+    TrackNetWidth, TrackNetHeight = 640, 360
+    img, img1, img2 = None, None, None
+
+    # # load TrackNet model
+    modelFN = trackNet
+    m = modelFN(n_classes, input_height=TrackNetHeight, input_width=TrackNetWidth)
+    m.compile(loss='categorical_crossentropy', optimizer='adadelta', metrics=['accuracy'])
+    m.load_weights(save_weights_path)
+
+    # In order to draw the trajectory of tennis, we need to save the coordinate of previous 7 frames
+    q = queue.deque()
+    for i in range(0, 8):
+        q.appendleft(None)
     
     # initialize deep sort
     model_filename = 'model_data/mars-small128.pb'
@@ -125,10 +152,12 @@ def main(_argv):
         length = int(vid.get(cv2.CAP_PROP_FRAME_COUNT))
     frame_num = 0
     # while video is running
-    while frame_num < 500:
+    while frame_num < 250:
         return_value, frame = vid.read()
+
         if return_value:
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
             image = Image.fromarray(frame)
         else:
             print('Video has ended or failed, try a different video format!')
@@ -191,10 +220,10 @@ def main(_argv):
         class_names = utils.read_class_names(cfg.YOLO.CLASSES)
 
         # by default allow all classes in .names file
-        allowed_classes = list(class_names.values())
+        # allowed_classes = list(class_names.values())
         
         # custom allowed classes (uncomment line below to customize tracker for only people)
-        #allowed_classes = ['person']
+        allowed_classes = ['person']
 
         # loop through objects and use class index to get class name, allow only classes in allowed_classes list
         names = []
@@ -228,14 +257,80 @@ def main(_argv):
         classes = np.array([d.class_name for d in detections])
         indices = preprocessing.non_max_suppression(boxs, classes, nms_max_overlap, scores)
         detections = [detections[i] for i in indices]       
-
         # Call the tracker
         tracker.predict()
         tracker.update(detections)
 
-        # print(tracker.tracks)
+        # detect the ball
+        # img is the frame that TrackNet will predict the position
+        # since we need to change the size and type of img, copy it to output_img
+        output_img = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
-        # update tracks
+        # resize it
+        img = cv2.resize(output_img, (TrackNetWidth, TrackNetHeight))
+        # input must be float type
+        img = img.astype(np.float32)
+
+        # since the odering of TrackNet  is 'channels_first', so we need to change the axis
+        X = np.rollaxis(img, 2, 0)
+        # prdict heatmap
+        pr = m.predict(np.array([X]))[0]
+        # print("pr: ", pr)
+
+        # since TrackNet output is ( net_output_height*model_output_width , n_classes )
+        # so we need to reshape image as ( net_output_height, model_output_width , n_classes(depth) )
+        # .argmax( axis=2 ) => select the largest probability as class
+        pr = pr.reshape((TrackNetHeight, TrackNetWidth, n_classes)).argmax(axis=2)
+
+        # cv2 image must be numpy.uint8, convert numpy.int64 to numpy.uint8
+        pr = pr.astype(np.uint8)
+
+        # reshape the image size as original input image
+        heatmap = cv2.resize(pr, (width, height))
+
+        # heatmap is converted into a binary image by threshold method.
+        ret, heatmap = cv2.threshold(heatmap, 127, 255, cv2.THRESH_BINARY)
+
+        # find the circle in image with 2<=radius<=7
+        circles = cv2.HoughCircles(heatmap, cv2.HOUGH_GRADIENT, dp=1, minDist=1, param1=50, param2=2, minRadius=2,
+                               maxRadius=7)
+        print("circles: ", circles)
+
+          # check if there have any tennis be detected
+        if circles is not None:
+            # if only one tennis be detected
+            if len(circles) == 1:
+
+                x = int(circles[0][0][0])
+                y = int(circles[0][0][1])
+
+                # push x,y to queue
+                q.appendleft([x, y])
+                # pop x,y from queue
+                q.pop()
+
+                data.append([frame_num, 'ball', '-', '-', x, y])      
+
+            else:
+                # push None to queue
+                q.appendleft(None)
+                # pop x,y from queue
+                q.pop()
+
+        else:
+            # push None to queue
+            q.appendleft(None)
+            # pop x,y from queue
+            q.pop()
+        
+        # draw current frame prediction and previous 7 frames as yellow circle, total: 8 frames
+        for i in range(0, 8):
+            if q[i] is not None:
+                draw_x = q[i][0]
+                draw_y = q[i][1]
+                cv2.circle(frame, (draw_x, draw_y), 2, (255,255,0), thickness=1, lineType=8, shift=0)
+
+        #update tracks
         for track in tracker.tracks:
             if not track.is_confirmed() or track.time_since_update > 1:
                 continue 
@@ -320,17 +415,6 @@ def main(_argv):
                 else:
                     team = " b"
                     print("team b")
-
-                # print(fgmask.any(axis=-1).sum())
-                # contours = filtercontours(contours)
-                # refcontours = filtercontours(refcontours)
-                # dict = classifycontours(contours, crop_img, fgmask)
-                # print(dict['ateam'])
-                # result = np.asarray(crop_img)
-                # result = cv2.cvtColor(crop_img, cv2.COLOR_RGB2BGR)
-                # mask = cv2.inRange(result, lower, upper)
-                # cv2.imshow("crop", crop_img)
-                # out.write(crop_img)
             
         # draw bbox on screen
             color = colors[int(track.track_id) % len(colors)]
@@ -338,6 +422,12 @@ def main(_argv):
             cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), color, 2)
             cv2.rectangle(frame, (int(bbox[0]), int(bbox[1]-30)), (int(bbox[0])+(len(class_name)+len(str(track.track_id)))*17, int(bbox[1])), color, -1)
             cv2.putText(frame, class_name + "-" + team + "-" + str(track.track_id),(int(bbox[0]), int(bbox[1]-10)),0, 0.75, (255,255,255),2)
+
+            """ Store player position in dataframe format """
+            if track.track_id == 1 or track.track_id == 2:
+                data.append([frame_num, class_name, team, track.track_id, (bbox[0] + bbox[2])/2, bbox[3]])      
+                print(data)
+       
 
         # if enable info flag then print details about each track
             if FLAGS.info:
@@ -355,6 +445,9 @@ def main(_argv):
         # if output flag is set, save video file
         if FLAGS.output:
             out.write(result)
+            df_players_positions = pd.DataFrame(data, columns=["id", "class_name", "team", "x", "y"])
+            df_players_positions.to_csv("tracking_players.csv")
+
         if cv2.waitKey(1) & 0xFF == ord('q'): break
     cv2.destroyAllWindows()
 

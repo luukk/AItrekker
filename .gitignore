@@ -3,3 +3,7 @@
 /data/yolov4.weights
 /data/video
 *.jpg
+trackNet/model.1
+WeightsTracknet/model.1
+*.csv
+output.avi
