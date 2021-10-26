@@ -1,0 +1,9 @@
+1-6, wozniacki near, sharapova far, wozniacki serve
+8-14, sharapova near, wozniacki far, sharapova serve
+15-18, sharapova near, wozniacki far, wozniacki serve
+19-24, wozniacki near, sharapova far, sharapova serve
+25-33, wozniacki near, sharapova far, wozniacki serve
+34-45, sharapova near, wozniacki far, sharapova serve
+46-50, sharapova near, wozniacki far, wozniacki serve
+51-56, wozniacki near, sharapova far, sharapova serve
+57-59, wozniacki near, sharapova far, wozniacki serve

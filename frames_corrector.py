@@ -1,5 +1,6 @@
 import math
 import re
+from functools import reduce
 
 import numpy as np
 import pandas as pd
@@ -8,33 +9,33 @@ from absl.flags import FLAGS
 
 flags.DEFINE_string('input', None, 'Data file to read from; e.g. \'.csv\'')
 flags.DEFINE_string('output', None, 'Data file to write to; e.g. \'.csv\'')
+flags.DEFINE_string('near', None, 'Label for player closer to the camera')
+flags.DEFINE_string('far', None, 'Label for player further from the camera')
+# python data_processor.py --input ./output/data/1.csv --output ./output/frames_corrected/1.csv --near WOZ --far SHA
 
 
 def main(_argv):
     df = pd.read_csv(f"{FLAGS.input}")
 
-    players = write_filled_frames(df)
+    merged_df = transform_to_columns(df)
 
-    input_file = re.findall(r'[^\/]+(?=\.)', FLAGS.input)[0]
-    players = [
-        pd.read_csv(f"./output/frame_corrected/{input_file}_player_1.csv"),
-        pd.read_csv(f"./output/frame_corrected/{input_file}_player_2.csv")
-    ]
-
-    for player in players:
-        player['x'].interpolate(method='index', inplace=True)
-        player['y'].interpolate(method='index', inplace=True)
-
-    for idx, player_df in enumerate(players):
-        if FLAGS.output:
-            input_file = re.findall(r'[^\/]+(?=\.)', FLAGS.input)[0]
-            player_df.to_csv(f"{FLAGS.output}/{input_file}_player_{idx + 1}.csv", index=False)
+    for column_name in merged_df:
+        if re.search(r'_x|_y', column_name) and 'ball_' not in column_name:
+            merged_df[f"{column_name}"].interpolate(method='index', inplace=True)
         else:
-            player_df.to_csv(f"player_{idx + 1}.csv", index=False)
+            continue
+
+    merged_df = merged_df.astype({ 'frame': int })
+
+    if FLAGS.output:
+        merged_df.to_csv(f"{FLAGS.output}", index=False)
+    else:
+        input_file = re.findall(r'[^\/]+(?=\.)', FLAGS.input)[0]
+        merged_df.to_csv(f"{input_file}.csv", index=False)
 
 
-def fill_missing_frames(df, first_frame, max_frames, pid):
-    frame_set_range = range(first_frame, max_frames)
+def fill_missing_frames(df, first_frame, last_frame, label):
+    frame_set_range = range(first_frame, last_frame)
     dc = {}
     dcf = {}
 
@@ -50,27 +51,28 @@ def fill_missing_frames(df, first_frame, max_frames, pid):
     for i in sorted(dc.keys()):
         if(dc[i]['idx'] == -1):
             offset += 1
-        dcf[str(current)] = {'id': pid, 'frame': i, 'x': dc[i]['x'], 'y': dc[i]['y']}
+        dcf[str(current)] = {'frame': i, f"{label}_x": dc[i]['x'], f"{label}_y": dc[i]['y']}
         current += 1
 
     return pd.DataFrame.from_dict(dcf).transpose()
 
 
-def write_filled_frames(df):
-    p1 = df[df['id'] == '1']
-    p2 = df[df['id'] == '2']
-    p1_dict = p1.to_dict(orient='index')
-    p2_dict = p2.to_dict(orient='index')
+def transform_to_columns(df):
+    # because our class ids can only be the 2 players or the ball
+    dfs = [df[df['id'] == f"{class_id}"].reset_index(drop=True) for class_id in df['id'].unique()]
 
-    max_frames = max(p1['frame'].iloc[-1], p2['frame'].iloc[-1])
-    players = [fill_missing_frames(p1_dict, p1['frame'][0], max_frames, '1'), fill_missing_frames(p2_dict, p2['frame'][1], max_frames, '2')]
+    first_frame = min(dfs[0]['frame'][0], dfs[1]['frame'][0])
+    last_frame = max(dfs[0]['frame'].iloc[-1], dfs[1]['frame'].iloc[-1])
 
-    for idx, player_df in enumerate(players):
-        if FLAGS.output:
-            input_file = re.findall(r'[^\/]+(?=\.)', FLAGS.input)[0]
-            player_df.to_csv(f"./output/frame_corrected/{input_file}_player_{idx + 1}.csv", index=False)
-        else:
-            player_df.to_csv(f"player_{idx + 1}.csv", index=False)
+    dfs = [df.to_dict(orient='index') for df in dfs]
+
+    dfs = [
+        fill_missing_frames(dfs[0], first_frame, last_frame, f"{FLAGS.near}"),
+        fill_missing_frames(dfs[1], first_frame, last_frame, f"{FLAGS.far}"),
+        fill_missing_frames(dfs[2], first_frame, last_frame, 'ball')
+    ]
+
+    return reduce(lambda df1, df2: pd.merge(df1, df2, on='frame'), dfs)
 
 
 if __name__ == '__main__':
