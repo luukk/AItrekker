@@ -11,8 +11,10 @@ from absl.flags import FLAGS
 from birdeyeview.bird_eye_view import *
 
 flags.DEFINE_string('input', None, 'Path to data file to read from; e.g. \'.csv\'')
-flags.DEFINE_string('write_to', None, 'Path to write csv; e.g. \'.csv\'')
+flags.DEFINE_string('write', None, 'Path to write csv; e.g. \'.csv\'')
 flags.DEFINE_string('output', None, 'Path to output; e.g. \'output.avi\'')
+# python generate_bird_eye_view.py --input ./output/merged/1.csv --write_to ./output/transformed/1.csv --output ./output/2d/1.avi
+# python generate_bird_eye_view.py --input 1
 
 
 def main(_argv):
@@ -40,7 +42,7 @@ def main(_argv):
 
         coordinates_df[f"{column}_T"] = coordinates_df[column].apply(lambda x: player_coor(x, M))
 
-    # if FLAGS.write_to:
+    # if FLAGS.write:
     #     write_to_file(coordinates_df)
     write_to_file(coordinates_df) ################### TEMPORARY
 
@@ -114,7 +116,7 @@ def write_to_file(df):
         write_df[[f"{t_column[:-2]}_x", f"{t_column[:-2]}_y"]] = pd.DataFrame(df[t_column].tolist())
     
     write_df = write_df.astype({ 'frame': int })
-    # write_df.to_csv(f"{FLAGS.write_to}", index=False)
+    # write_df.to_csv(f"{FLAGS.write}", index=False)
     write_df.to_csv(f'./output/transformed/{FLAGS.input}.csv', index=False) ################### TEMPORARY
 
 
