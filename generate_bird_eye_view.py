@@ -1,3 +1,4 @@
+import math
 import pickle
 import re
 from copy import deepcopy
@@ -33,8 +34,8 @@ def main(_argv):
     # homography matrix to go from real world image to bird eye view
     M = transition_matrix(image_pts, bev_pts)
 
-    # df = pd.read_csv(f"{FLAGS.input}")
-    df = pd.read_csv(f"./output/merged/{FLAGS.input}.csv") 
+    df = pd.read_csv(f"{FLAGS.input}")
+    # df = pd.read_csv(f"./output/merged/{FLAGS.input}.csv") 
     coordinates_df = to_tuples(df)
 
     for column in coordinates_df:
@@ -42,52 +43,66 @@ def main(_argv):
 
         coordinates_df[f"{column}_T"] = coordinates_df[column].apply(lambda x: player_coor(x, M))
 
-    # if FLAGS.write:
-    #     write_to_file(coordinates_df)
-    write_to_file(coordinates_df) ################### TEMPORARY
+    if FLAGS.write:
+        format_columns(coordinates_df)
+        write_df.to_csv(f"{FLAGS.write}", index=False)
+    # formatted_df = format_columns(coordinates_df)
+    # formatted_df.to_csv(f'./output/transformed/{FLAGS.input}.csv', index=False)
 
+    bird_eye_coords = [list(to_tuples(formatted_df).iloc[:, (n + 1)]) for n in range(3)]    
 
+    if FLAGS.output:
+        output_video_path = f"{FLAGS.output}"
+    else:
+        output_video_path = 'bird_eye_view_output.avi'
+    # output_video_path = f"./output/2d/{FLAGS.input}.avi"
 
-    # positions_0 = list(newFrame['coor_bev_0'])
-    # positions_1 = list(newFrame['coor_bev_1'])
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    # better if the fps is the same as the one of the original video
+    fps = 30
 
-    # if FLAGS.output:
-    #     output_video_path = f"{FLAGS.output}"
-    # else:
-    #     output_video_path = 'output.avi'
+    output_video = cv2.VideoWriter(output_video_path, fourcc, fps,
+                                (output_width, output_height))
 
-    # fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    # # better if the fps is the same as the one of the original video
-    # fps = 60
+    # define a court to trace the player's path
+    court_base = BirdEyeViewCourt(output_width, pad)
 
-    # output_video = cv2.VideoWriter(output_video_path, fourcc, fps,
-    #                             (output_width, output_height))
+    colors = [
+        (255, 20, 20), # player1
+        (20, 20, 255), # player2
+        (220, 253, 80) # ball
+    ]
 
-    # # define a court to trace the player's path
-    # court_base = BirdEyeViewCourt(output_width, pad)
+    i = 0
+    while (True):
+        if len(bird_eye_coords[0]) == i:
+            break
 
-    # i = 0
-    # while (True):
-    #     if len(positions_0) == i:
-    #         break
+        # copy instance in order not to have an inheritance
+        court = deepcopy(court_base)
 
-    #     # copy instance in order not to have an inheritance
-    #     court = deepcopy(court_base)
+        # players positions at each frame
+        # skips NaN entries
+        # player1
+        if not math.isnan(bird_eye_coords[0][i][0]):
+            player_1_coords = tuple(map(int, bird_eye_coords[0][i]))
+            court.add_player(player_1_coords, 0, colors[0], colors[0])
+            court_base.add_path_player(player_1_coords, colors[0])
+        # player2
+        if not math.isnan(bird_eye_coords[1][i][0]):
+            player_2_coords = tuple(map(int, bird_eye_coords[1][i]))
+            court.add_player(player_2_coords, 1, colors[1], colors[1])
+            court_base.add_path_player(player_2_coords, colors[1])
+        # ball
+        if not math.isnan(bird_eye_coords[2][i][0]):
+            ball_coords = tuple(map(int, bird_eye_coords[2][i]))
+            court.add_player(ball_coords, 1, colors[2], colors[2])
+            court_base.add_path_player(ball_coords, colors[2])
 
-    #     # players positions at each frame
-    #     court.add_player(positions_0[i], 0,
-    #                     (255, 0, 0), (0, 0, 0))
-    #     court.add_player(positions_1[i], 1,
-    #                     (38, 19, 15), (0, 0, 0))
+        output_video.write(court.court)
+        i += 1
 
-    #     # players positions at each frame added to the path
-    #     court_base.add_path_player(positions_0[i])
-    #     court_base.add_path_player(positions_1[i])
-
-    #     output_video.write(court.court)
-    #     i += 1
-
-    # output_video.release()
+    output_video.release()
 
 
 def to_tuples(df):
@@ -108,16 +123,14 @@ def pair(iterable):
     return zip(a, a)
 
 
-def write_to_file(df):
-    write_df = pd.DataFrame(df['frame'])
+def format_columns(df):
+    formatted_df = pd.DataFrame(df['frame'])
     transformed_columns = [column for column in df if '_T' in column]
     
     for t_column in transformed_columns:
-        write_df[[f"{t_column[:-2]}_x", f"{t_column[:-2]}_y"]] = pd.DataFrame(df[t_column].tolist())
+        formatted_df[[f"{t_column[:-2]}_x", f"{t_column[:-2]}_y"]] = pd.DataFrame(df[t_column].tolist())
     
-    write_df = write_df.astype({ 'frame': int })
-    # write_df.to_csv(f"{FLAGS.write}", index=False)
-    write_df.to_csv(f'./output/transformed/{FLAGS.input}.csv', index=False) ################### TEMPORARY
+    return formatted_df.astype({ 'frame': int })
 
 
 if __name__ == '__main__':
