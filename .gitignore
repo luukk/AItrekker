@@ -11,3 +11,5 @@ output.avi
 /Lib
 /Scripts
 pyvenv.cfg
+/input
+/output
