@@ -1,7 +1,7 @@
 ## Getting Started
 To get started, install the proper dependencies either via Anaconda or Pip. I recommend Anaconda route for people using a GPU as it configures CUDA toolkit version for you.
 
-https://raw.githubusercontent.com/luukk/AItrekker/main/videos/tennis_demo_new.mp4?token=ACNMNGO47OMRYRMUREYLLULBSJ2WC
+https://raw.githubusercontent.com/luukk/AItrekker/main/videos/tennis_demo_new.mp4
 
 ### Conda (Recommended)
 
